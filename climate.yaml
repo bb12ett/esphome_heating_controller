@@ -1,0 +1,5 @@
+climate: 
+ - platform: generic_thermostat
+   name: Home
+   heater: switch.heating_controller_heating_output
+   target_sensor: sensor.average_house_temperature
