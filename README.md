@@ -47,5 +47,6 @@ If you are using 1 temperature sensor the thermostat can be configured in the UI
 Add the included climate.yaml to your configuration.yaml
 
 ## Scheduler
-I have used the 
+I have used the brilliant Scheduler Component (https://github.com/nielsfaber/scheduler-component) to add custom temperature schedules for the generic thermostat and hot water schedules.
+
 
