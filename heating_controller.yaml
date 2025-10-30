@@ -1,0 +1,139 @@
+esphome:
+  name: heating-controller
+  friendly_name: Heating Controller
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Time component for clock and scheduled automations
+time:
+  - platform: sntp
+    id: local_time
+    timezone: "Europe/London" #SET YOUR TIMEZONE HERE
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+    # Hot water fallback automations
+    on_time:
+      # Turn ON Hot Water at 4:00 PM (16:00) - CUSTOMISE TIME AS REQUIRED
+      - seconds: 0
+        minutes: 0
+        hours: 16
+        then:
+          - if:
+              condition:
+                switch.is_on: hot_water_timer_enable
+              then:
+                - logger.log: "HA disconnected. Starting fixed hot water cycle."
+                - switch.turn_on: hot_water_output
+      # Turn OFF Hot Water at 6:00 PM (18:00) - CUSTOMISE TIME AS REQUIRED
+      - seconds: 0
+        minutes: 0
+        hours: 18
+        then:
+          - if:
+              condition:
+                switch.is_on: hot_water_timer_enable
+              then:
+                - logger.log: "Fixed hot water cycle complete."
+                - switch.turn_off: hot_water_output
+
+# Script for 1-hour delay before fallback
+script:
+  - id: fallback_delay
+    then:
+      - delay: 3600s  # 1 hour
+      - climate.control:
+          id: local_heating_controller
+          target_temperature: 19.0 # CUSTOMISE TEMPERATURE AS REQUIRED
+          mode: HEAT
+      - switch.turn_on: hot_water_timer_enable
+      - logger.log: "Home Assistant still disconnected after 1 hour. Activating local controls."
+
+# Enable Home Assistant API with delayed fallback logic
+api:
+  encryption:
+    key: "YOUR-API-KEY-HERE"
+  on_client_disconnected:
+    then:
+      - logger.log: "Home Assistant disconnected. Starting 1-hour timer for fallback."
+      - script.execute: fallback_delay
+  on_client_connected:
+    then:
+      - script.stop: fallback_delay  # Stop the script if HA reconnects
+      - climate.control:
+          id: local_heating_controller
+          mode: "OFF"
+      - switch.turn_off: hot_water_timer_enable
+      - switch.turn_off: hot_water_output
+      - logger.log: "Home Assistant connected. Deactivating all fallback controls."
+
+ota:
+  platform: esphome
+  password: "YOUR-PASSWORD-HERE"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Heating-Controller"
+    password: "YOUR-PASSWORD-HERE"
+
+captive_portal:
+
+web_server:
+  port: 80
+
+# Define switches
+switch:
+  - platform: gpio
+    pin: GPIO32
+    name: "Heating Output"
+    id: heating_output
+  - platform: gpio
+    pin: GPIO33
+    name: "Hot Water Output"
+    id: hot_water_output
+  - platform: template
+    name: "Hot Water Timer Enable"
+    id: hot_water_timer_enable
+    optimistic: true
+
+# DHT11 sensor on GPIO4
+sensor:
+  - platform: dht
+    pin:
+      number: GPIO4
+      mode:
+        input: true
+        pullup: false
+    temperature:
+      name: "Hallway Temperature"
+      id: hallway_temperature
+    humidity:
+      name: "Hallway Humidity"
+    model: DHT11
+    update_interval: 60s
+
+# Local thermostat for heating
+climate:
+  - platform: thermostat
+    name: "Local Heating Controller"
+    id: local_heating_controller
+    sensor: hallway_temperature
+    min_heating_off_time: 300s
+    min_heating_run_time: 300s
+    min_idle_time: 30s
+    heat_action:
+      - switch.turn_on: heating_output
+    idle_action:
+      - switch.turn_off: heating_output
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 20.0
